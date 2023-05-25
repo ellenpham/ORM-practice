@@ -22,7 +22,7 @@ db = SQLAlchemy(app)
 from flask_bcrypt import Bcrypt
 bcrypt = Bcrypt(app)
 
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 jwt = JWTManager(app)
 
 from datetime import timedelta, date
@@ -166,6 +166,39 @@ def card_create():
     # return the card in the response
     return jsonify(card_schema.dump(new_card))
 
+# add the id to let the server know the card we want to delete
+@app.route("/cards/<int:id>", methods=["DELETE"])
+@jwt_required()
+# include the id parameter
+def card_delete(id):
+    # get the user id invoking get_jwt_identity
+    user_id = get_jwt_identity()
+
+    # find it in the database
+    user = User.query.get(user_id)
+
+    # make sure it is in the database
+    if not user:
+        return abort(401, description="Invalid user")
+    
+    # stop the request if the user is not an admin
+    if not user.admin:
+        return abort(401, description = "Unauthorised user")
+    
+    # find the card
+    card = Card.query.filter_by(id=id).first()
+
+    # return an error if the card doesn't exist
+    if not Card:
+        return abort(400, description = "Card does not exist")
+    
+    # delete the card from the database and commit
+    db.session.delete(card)
+    db.session.commit()
+
+    # return the card in the response
+    return jsonify(card_schema.dump(card))
+
 
 # Password encryption
 @app.route("/auth/register", methods=["POST"])
@@ -189,6 +222,9 @@ def auth_register():
 
     # Add the password attribute hashed by bcrypt
     user.password = bcrypt.generate_password_hash(user_fields["password"]).decode("utf-8")
+
+    # Set the admin attribute to false
+    user.admin = False
 
     # Add it to he database and commit the changes
     db.session.add(user)
